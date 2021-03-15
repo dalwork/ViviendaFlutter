@@ -1,0 +1,535 @@
+import 'package:aevivienda/models/projectsDoc.dart';
+import 'package:flutter/material.dart';
+//import 'package:path/path.dart';
+import 'package:aevivienda/models/proyectos.dart';
+import 'package:http/http.dart' as http;
+import 'package:aevivienda/pages/principal.dart';
+import 'package:aevivienda/db/baseDatos.dart';
+import 'package:aevivienda/models/photo1.dart';
+import 'package:aevivienda/util/utility.dart';
+import 'dart:convert';
+import 'dart:async';
+import 'dart:io' as io;
+
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:photo_view/photo_view.dart';
+import 'package:aevivienda/pages/getLocationPage.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:location_permissions/location_permissions.dart';
+//import 'package:aevivienda/pages/loader.dart';
+//import 'package:permission_handler/permission_handler.dart';
+
+BaseDatos _db = BaseDatos();
+List<ProjectsDoc> _proyectoDoc = [];
+ProjectsDoc _proyecto = new ProjectsDoc();
+Photo1 _foto1 = new Photo1();
+int _registroId;
+//Future<File> imageFile;
+io.File familiaFile;
+io.File viviendaFile;
+String familiaString;
+String viviendaString;
+String gpsString;
+Image imagen;
+Image imagen1;
+Position _position;
+List<Photo1> imagenes;
+Geolocator _geolocator;
+
+enum DialogAction { yes, no }
+
+class Beneficiario extends StatefulWidget {
+  Beneficiario({Key key}) : super(key: key);
+
+  @override
+  _BeneficiarioState createState() => _BeneficiarioState();
+}
+
+class _BeneficiarioState extends State<Beneficiario> {
+  bool _enabled = false;
+  Future<ProjectsDoc> buscarProyecto() async {
+    _proyectoDoc = await _db.getProyectoDocs();
+    _proyecto = _proyectoDoc[0];
+    _registroId = _proyecto.registroId;
+    _verificarDatos();
+    //_foto1 = await _db.getFotoGps(_registroId);
+    //print("entro a ver lat1=" + _foto1.lat.toString());
+    return _proyecto;
+  }
+
+  void _resultadoAlerta(String valor) {
+    AlertDialog resultado = new AlertDialog(
+      content: new Text(valor),
+    );
+    showDialog(context: context, child: resultado);
+  }
+
+  Future<String> _showAccionDialogo(DialogAction action) async {
+    String __resultado = "";
+    if (action.index == 0) {
+      //setState(() {
+      print("_showAccionDialogo action.index=" + action.index.toString());
+      __resultado = await _subirServidor();
+      print("paso _showActionDialogo");
+      //});
+      setState(() {
+        _resultadoAlerta(__resultado);
+      });
+      print("paso _resultadoAlerta=" + __resultado);
+    }
+    return "Tranferencia Completada";
+  }
+
+  void _showDialogo() {
+    AlertDialog dialogo = new AlertDialog(
+      content: new Text("Se enviara los datos al servidor."),
+      actions: <Widget>[
+        new FlatButton(
+            onPressed: () {
+              print("_showDialogo SI");
+              _showAccionDialogo(DialogAction.yes);
+              Navigator.pop(context);
+            },
+            child: new Text("Si")),
+        new FlatButton(
+            onPressed: () {
+              _showAccionDialogo(DialogAction.no);
+              Navigator.pop(context);
+            },
+            child: new Text("No")),
+      ],
+    );
+    showDialog(context: context, child: dialogo);
+  }
+
+  @override
+  initState() {
+    super.initState();
+    List<ProjectsDoc> projDoc = [];
+    imagenes = [];
+    //print("entro a ver lat2=" + _foto1.lat.toString());
+    /*_geolocator = Geolocator();
+    LocationOptions locationOptions =
+        LocationOptions(accuracy: LocationAccuracy.high, distanceFilter: 1);
+    checkPermission();
+
+    StreamSubscription positionStream = _geolocator
+        .getPositionStream(locationOptions)
+        .listen((Position position) {
+      _position = position;
+    });*/
+  }
+
+  void checkPermission() async {
+    _geolocator.checkGeolocationPermissionStatus().then((status) {
+      print('status: $status');
+    });
+    _geolocator
+        .checkGeolocationPermissionStatus(
+            locationPermission: GeolocationPermission.locationAlways)
+        .then((status) {
+      print('always status: $status');
+    });
+    _geolocator
+        .checkGeolocationPermissionStatus(
+            locationPermission: GeolocationPermission.locationWhenInUse)
+        .then((status) {
+      print('whenInUse status: $status');
+    });
+  }
+
+  void _verificarDatos() async {
+    Photo1 foto = new Photo1();
+    foto = await _db.getPhoto(_registroId);
+    if ((foto.family != "") &&
+        (foto.home != "") &&
+        (foto.lat != "") &&
+        (foto.lng != ""))
+      setState(() {
+        _enabled = true;
+      });
+    else
+      setState(() {
+        _enabled = false;
+      });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    /*var _onPressed;
+    if (_enabled) {
+      _onPressed = _showDialogo;
+    }*/
+    return new Scaffold(
+      appBar: new AppBar(
+        title: new Text("PERSONA BENEFICIADA"),
+        actions: <Widget>[
+          new IconButton(
+            icon: new Icon(Icons.cloud_upload),
+            color: Colors.white,
+            disabledColor: Colors.blue,
+            onPressed: _showDialogo,
+          )
+        ],
+      ),
+      // drawer: new Drawer(),
+      body: new SingleChildScrollView(
+        scrollDirection: Axis.vertical,
+        child: new Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            FutureBuilder<ProjectsDoc>(
+                future: buscarProyecto(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    return Card(
+                      child: new ListTile(
+                        title: new Text(
+                          snapshot.data.nombrePersona,
+                          style: TextStyle(
+                              fontSize: 25.0, color: Colors.orangeAccent),
+                        ),
+                        leading: new Icon(
+                          Icons.person_pin,
+                          size: 77.0,
+                          color: Colors.orangeAccent,
+                        ),
+                        subtitle: new Text(
+                          snapshot.data.codigoProj +
+                              "\n" +
+                              snapshot.data.nombreProj,
+                          style: TextStyle(fontSize: 20.0, color: Colors.black),
+                        ),
+                      ),
+                    );
+                  } else {
+                    return Text('Error ${snapshot.error}');
+                  }
+                }),
+            new Text(""),
+            new RaisedButton(
+              child: new Text("Foto Familia"),
+              onPressed: _openCamera,
+            ),
+            FutureBuilder<String>(
+                future: _fotoFamiliaBase(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    return _setImageView();
+                  }
+                }),
+            new RaisedButton(
+              child: new Text("Foto Vivienda"),
+              onPressed: _openCamera1,
+            ),
+            FutureBuilder<String>(
+                future: _fotoCasaBase(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    return _setImageView1();
+                  }
+                }),
+            new RaisedButton(
+              child: new Text("GPS Vivienda"),
+              onPressed: () {
+                _getCurrentLocation();
+                //updateLocation();
+              },
+            ),
+            FutureBuilder<String>(
+                future: _ubicacionGps(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    return _setPositionView();
+                  }
+                }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /////////////////////////////
+  // FOTO para la familia
+  ////////////////////////////
+  void _openCamera() async {
+    var picture = await ImagePicker.pickImage(source: ImageSource.camera);
+    setState(() {
+      familiaFile = picture;
+    });
+    //String path = await getApplicationDocumentsDirectory();
+    io.Directory documentoDirectorio = await getApplicationDocumentsDirectory();
+    String path = documentoDirectorio.path;
+    //String path = join(documentoDirectorio.path, DB_NAME);
+    final io.File nuevaImagen =
+        await familiaFile.copy('$path/imagenFamilia.jpg');
+    setState(() {
+      familiaFile = nuevaImagen;
+    });
+    //imgString = Utility.base64String(imageFile.readAsBytesSync());
+    Photo1 fotoFamilia = new Photo1();
+    //fotoFamilia = await _db.getPhotos();
+    //fotoFamilia.ai = 1;
+    fotoFamilia.family = '$path/imagenFamilia.jpg';
+    fotoFamilia.registerId = _registroId;
+    _db.updateFotoFamilia(fotoFamilia);
+    _verificarDatos();
+  }
+
+  Future<String> _fotoFamiliaBase() async {
+    familiaString = "";
+    familiaString = await _db.getFotoFamilia();
+    if (familiaString == null) familiaString = "";
+    return familiaString;
+  }
+
+  Widget _setImageView() {
+    if (familiaFile != null) {
+      return new Image.file(familiaFile,
+          width: 300, height: 300); //imagen de camara
+    } else {
+      if (familiaString.length > 0) {
+        //print("direccion imagen Familia " + imgString);
+        return new Image.file(io.File(familiaString),
+            width: 300, height: 300); //recuperado de BD
+        //return Utility.imageFromBase64String(imgString);
+      } else {
+        return new Text("Seleccione una imagen de Familia"); //no tiene imagen
+      }
+    }
+  }
+
+  ///////////////////////////////////
+  ///PARA EL DOMICILIO
+  //////////////////////////////////
+  void _openCamera1() async {
+    var picture = await ImagePicker.pickImage(source: ImageSource.camera);
+    setState(() {
+      viviendaFile = picture;
+    });
+    io.Directory documentoDirectorio = await getApplicationDocumentsDirectory();
+    String path = documentoDirectorio.path;
+    //String path = join(documentoDirectorio.path, DB_NAME);
+    final io.File nuevaImagen = await viviendaFile.copy('$path/imagenCasa.jpg');
+    setState(() {
+      viviendaFile = nuevaImagen;
+    });
+    Photo1 fotoCasa = new Photo1();
+    fotoCasa.home = '$path/imagenCasa.jpg';
+    fotoCasa.registerId = _registroId;
+    _db.updateFotoCasa(fotoCasa);
+    _verificarDatos();
+  }
+
+  Future<String> _fotoCasaBase() async {
+    viviendaString = "";
+    viviendaString = await _db.getFotoCasa();
+    if (viviendaString == null) viviendaString = "";
+    return viviendaString;
+  }
+
+  Widget _setImageView1() {
+    if (viviendaFile != null) {
+      return Image.file(viviendaFile,
+          width: 300, height: 300); //imagen de camara
+    } else {
+      if (viviendaString.length > 0) {
+        return Image.file(io.File(viviendaString),
+            width: 300, height: 300); //recuperado
+      } else {
+        return Text("Seleccione una imagen de Vivienda");
+      }
+    }
+  }
+
+  /////////////////////////////////////////////////////
+  //CARGAR EL GPS
+  //////////////////////////////////////////////////////
+
+  Future<String> _ubicacionGps() async {
+    gpsString = "";
+    _foto1 = await _db.getFotoGps();
+    //Imagen image = null;
+    gpsString = " LATITUD: " +
+        _foto1.lat.toString() +
+        "\n LONGITUD: " +
+        _foto1.lng.toString();
+    return gpsString;
+  }
+
+  Widget _setPositionView() {
+    print("_setposition");
+    if (_position != null) {
+      return Text(" LATITUD: " +
+          _position.latitude.toString() +
+          "\n LONGITUD: " +
+          _position.longitude.toString());
+    } else {
+      if (gpsString.length > 0) {
+        return Text("" + gpsString);
+      } else {
+        return Text("Seleccione la Ubicación de la Vivienda");
+      }
+    }
+  }
+
+//  ARCHIVO PARA EL GPS
+  Future<Position> _getCurrentLocation() async {
+    //bool isOpened = await LocationPermissions().openAppSettings();
+    //PermissionStatus permission =
+    //await LocationPermissions().requestPermissions();
+    checkPermission();
+    try {
+      Position position = await Geolocator()
+          .getCurrentPosition(desiredAccuracy: LocationAccuracy.high)
+          .timeout(new Duration(seconds: 5));
+      setState(() {
+        _position = position;
+        Photo1 fotoGps = new Photo1();
+        //fotoGps = await _db.getPhotos();
+        fotoGps.ai = 1;
+        fotoGps.lat = _position.latitude.toString();
+        fotoGps.lng = _position.longitude.toString();
+        fotoGps.registerId = _registroId;
+        _db.updateFotoGps(fotoGps);
+      });
+      _verificarDatos();
+    } catch (e) {
+      _position = null;
+    }
+    return _position;
+  }
+
+  /* void _openGallery() {
+    var picture = ImagePicker.pickImage(source: ImageSource.gallery);
+  }*/
+
+  Future<String> _subirServidor() async {
+    int _resultado = 0;
+
+    Photo1 foto = await _db.getPhoto(_registroId);
+    if (foto == null) {
+      return "No se encuentra registros para ser guardado";
+    } else {
+      String _resultado = "";
+      if (foto.family == "") {
+        _resultado = _resultado + "No se encuentra imagen de Familia \n";
+      }
+      if (foto.home == "") {
+        _resultado = _resultado + "No se encuentra imagen de Vivienda \n";
+      }
+      if ((foto.lat == "") && (foto.lng == "")) {
+        _resultado = _resultado + "No se encuentra datos GPS de Vivienda \n";
+      }
+      return _resultado;
+    }
+
+    familiaFile = null;
+    familiaString = "";
+    if (foto.family.length > 0) {
+      familiaFile = io.File(foto.family);
+      familiaString = Utility.base64String(familiaFile.readAsBytesSync());
+    }
+
+    viviendaFile = null;
+    viviendaString = "";
+    if (foto.home.length > 0) {
+      viviendaFile = io.File(foto.home);
+      viviendaString = Utility.base64String(viviendaFile.readAsBytesSync());
+    }
+
+    var respuesta = await http.post(
+        "http://siges.aevivienda.gob.bo/rub/rub/main/savebeneficiarioPhoto",
+        body: json.encode({
+          "familiy": familiaString,
+          "home": viviendaString,
+          "registerId": foto.registerId.toString()
+        }),
+        headers: {
+          "Content-type": "application/json",
+          "Accept": "application/json"
+        });
+    if (respuesta.body.toString() == "") {
+      _resultado = 1;
+    }
+    var respuesta1 = await http.post(
+        "http://siges.aevivienda.gob.bo/rub/rub/main/savebeneficiarioLatLng",
+        body: json.encode({
+          "lat": foto.lat,
+          "lng": foto.lng,
+          "ai": foto.ai.toString(),
+          "registerId": foto.registerId.toString()
+        }),
+        headers: {
+          "Content-type": "application/json",
+          "Accept": "application/json"
+        });
+    if (respuesta1.body.toString() == "") {
+      _resultado = _resultado + 1;
+    }
+    //String body = utf8.decode(respuesta.bodyBytes);
+    if (_resultado == 0) return "Hubo problema al guardar la información";
+    if (_resultado == 1)
+      return "Se guardo parcialmente la información";
+    else
+      return "Se guardo correctamente la información";
+  }
+}
+
+/*
+void updateLocation() async {
+  try {
+    Position newPosition = await Geolocator()
+        .getCurrentPosition(desiredAccuracy: LocationAccuracy.high)
+        .timeout(new Duration(seconds: 5));
+    setState(() {
+      _position = newPosition;
+    });
+  } catch (e) {
+    print('Error: ${e.toString()}');
+  }
+}
+*/
+////////////////////////////////////////////////////////////////////
+/*
+  pickImageFromGallery(Photo1 photo) {
+    ImagePicker.pickImage(source: ImageSource.gallery).then((imgFile) {
+      String imgString = Utility.base64String(imgFile.readAsBytesSync());
+      photo.home = imgString;
+      photo._db.insertFoto(photo);
+      // refreshImages();
+    });
+  }*/
+
+/*
+  refreshImages() {
+    _db.getPhoto().then((imgs) {
+      images.addAll(imgs);
+    });
+  }
+*/
+
+/*
+pickImageFromGallery(Photo1 photo) {
+    ImagePicker.pickImage(source: ImageSource.gallery).then((imgFile) {
+      String imgString = Utility.base64String(imgFile.readAsBytesSync());
+      photo.home = imgString;
+      _db.insertFoto(photo);
+      // refreshImages();
+    });
+  }
+*/
+
+/*
+Future<void> _optionDialogBox() {
+    return showDialog(context: context
+    builder:(BuildContext context){
+      return AlertDialog(
+
+      )
+    }
+
+    )
+  }
+*/
